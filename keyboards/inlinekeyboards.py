@@ -1,5 +1,4 @@
-from aiogram.filters import callback_data
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from lexicon.lexicon import BUTTON_LEXICON
 

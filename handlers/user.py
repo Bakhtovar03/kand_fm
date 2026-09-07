@@ -33,7 +33,10 @@ async def exchange_rate(callback_query: CallbackQuery):
         return
 
     if not rate:
-        await callback_query.message.answer("Курсы валют пока не загружены.")
+        await callback_query.message.answer(
+            text="Курсы валют пока не загружены.",
+            reply_markup=create_inline_keyboards(BUTTON_LEXICON["exchange_rate"])
+        )
         return
 
     # Telegram не принимает сообщения длиннее 4096 символов, поэтому отправляем частями.
@@ -41,6 +44,9 @@ async def exchange_rate(callback_query: CallbackQuery):
         await callback_query.message.answer(
             text=message_part,
             parse_mode=ParseMode.HTML,
+            reply_markup=create_inline_keyboards(BUTTON_LEXICON["exchange_rate"])
         )
+
+
 
 

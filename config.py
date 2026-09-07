@@ -25,11 +25,12 @@ class Config:
 def load_config(path: str | None = None) -> Config:
     env = Env()
     env.read_env(path)
+    channel_id = env.str("CHANNEL_ID", default="").strip()
 
     return Config(
         bot=TgBot(
             token=env("BOT_TOKEN"),
-            channel_id=env.int("CHANNEL_ID", default=None),
+            channel_id=int(channel_id) if channel_id else None,
         ),
         log=LogSettings(
             level=env("LOG_LEVEL"),

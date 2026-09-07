@@ -1,19 +1,17 @@
 import logging
+import re
 
 from aiogram import Bot
-import re
 
 SAFE_TELEGRAM_MESSAGE_LIMIT = 3900
 
 # Фильтр банков, которые нужно показывать клиенту.
 
 TARGET_BANK_ALIASES = (
-    "vasl",
     "spitamen",
     "imon",
     "humo",
     "eskhata",
-    "arvand",
     "amonatbonk",
     "alif",
 )
@@ -47,25 +45,41 @@ def format_rate_value(value: float | int | str | None) -> str:
 def format_bank_rates_for_client(data: dict) -> str:
     # Собираем список строк, потом объединяем их в один HTML-текст для Telegram.
     lines = []
-
+    updated = False
     for bank_name, bank_data in data.items():
         if not should_show_bank(bank_name):
             continue
 
+        # Флаг США (US): региональные символы \U0001F1FA и \U0001F1F8
+        flag_us = "\U0001F1FA\U0001F1F8"
+
+        # Флаг России (RU): региональные символы \U0001F1F7
+        flag_ru = "\U0001F1F7\U0001F1FA"
+
+        # Наличные деньги (Пачка долларов с крылышками): код \U0001F4B8
+        emoji_cash_wings = "\U0001F4B8"
+
+        # Банковская карта (Кредитная карта): символ \u200D не нужен, код: \U0001F4B3
+        emoji_card = "\U0001F4B3"
+
+
         rates = bank_data.get("rates", {})
         updated_at = bank_data.get("updated_at")
+        if updated_at and not updated:
+            lines.append(f"Курби асъор дар санаи: {updated_at}")
+            updated = True
+            lines.append("")
 
         # Название банка выделяем жирным через HTML-тег <b>.
         # Шаблон: ищет открывающую кавычку, затем любые символы внутри, затем закрывающую
         match = re.search(r'"([^"]*)"', bank_name)
         lines.append(f"<b>{match.group(1)}</b>")
 
-        if updated_at:
-            lines.append(f"Обновлено: {updated_at}")
+
 
         # Если по банку нет курсов, показываем понятное сообщение и идем дальше.
         if not rates:
-            lines.append("Курсы валют не найдены")
+            lines.append("маълумот муваққатан дастнорас аст")
             lines.append("")
             continue
 
@@ -74,14 +88,21 @@ def format_bank_rates_for_client(data: dict) -> str:
             cash = currency_data.get("cash", {})
             transfer = currency_data.get("transfer", {})
 
-            cash_buy = format_rate_value(cash.get("buy"))
-            cash_sell = format_rate_value(cash.get("sell"))
-            transfer_buy = format_rate_value(transfer.get("buy"))
-            transfer_sell = format_rate_value(transfer.get("sell"))
+            cash_buy = float(format_rate_value(cash.get("buy")))
+            cash_sell = float(format_rate_value(cash.get("sell")))
+            transfer_buy = float(format_rate_value(transfer.get("buy")))
+            transfer_sell = float(format_rate_value(transfer.get("sell")))
 
-            lines.append(f"{currency}:")
-            lines.append(f"  Наличные: покупка {cash_buy}, продажа {cash_sell}")
-            lines.append(f"  Переводы: покупка {transfer_buy}, продажа {transfer_sell}")
+            if currency == "RUB":
+                lines.append(f"Рубли Русия {currency}{flag_ru}:")
+                # Добавляем:.2f внутрь фигурных скобок после математического действия
+                lines.append(f"  Нақдӣ:{emoji_cash_wings} харид {cash_buy * 1000:.2f}, фурӯш {cash_sell * 1000:.2f}")
+                lines.append(f"  Интиқол:{emoji_card} харид {transfer_buy * 1000:.2f}, фурӯш {transfer_sell * 1000:.2f}")
+
+            elif currency == "USD":
+                lines.append(f"Доллари Амрико {currency}{flag_us}:")
+                lines.append(f"  Нақдӣ:{emoji_cash_wings} харид {cash_buy * 100:.2f}, фурӯш {cash_sell * 100:.2f}")
+                lines.append(f"  Интиқол:{emoji_card} харид {transfer_buy * 100:.2f}, фурӯш {transfer_sell * 100:.2f}")
 
         # Пустая строка визуально отделяет банки друг от друга.
         lines.append("")
