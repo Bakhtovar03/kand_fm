@@ -1,4 +1,5 @@
 import logging
+import json
 import re
 
 import httpx
@@ -10,6 +11,7 @@ from utils import format_bank_rates_for_client, split_text_for_telegram
 
 NBT_URL = "https://www.nbt.tj/en/kurs/kurs_kommer_bank.php"
 CURRENCIES = ("USD", "EUR", "RUB")
+LAST_RATE_MESSAGE_IDS_KEY = "exchange_rate:last_message_ids"
 
 HEADERS = {
     "User-Agent": (
@@ -125,12 +127,33 @@ async def send_rate(bot: Bot, channel_id: int, redis_client) -> None:
         return
 
     try:
+        sent_messages = []
         for message_part in split_text_for_telegram(rate):
-            await bot.send_message(
+            sent_message = await bot.send_message(
                 chat_id=channel_id,
                 text=message_part,
                 parse_mode="HTML",
             )
+            sent_messages.append(sent_message)
+
+        previous_message_ids_raw = await redis_client.get(LAST_RATE_MESSAGE_IDS_KEY)
+        if previous_message_ids_raw:
+            try:
+                previous_message_ids = json.loads(previous_message_ids_raw)
+            except json.JSONDecodeError:
+                previous_message_ids = []
+                logging.warning("Stored exchange rate message ids are corrupted")
+
+            for message_id in previous_message_ids:
+                try:
+                    await bot.delete_message(chat_id=channel_id, message_id=int(message_id))
+                except Exception as exc:
+                    logging.warning(f"Failed to delete previous exchange rates message {message_id}: {exc}")
+
+        await redis_client.set(
+            LAST_RATE_MESSAGE_IDS_KEY,
+            json.dumps([message.message_id for message in sent_messages]),
+        )
         logging.info("Scheduled exchange rates message was sent")
     except Exception as exc:
         logging.error(f"Scheduled exchange rates sending failed: {exc}")

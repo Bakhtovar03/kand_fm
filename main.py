@@ -47,8 +47,8 @@ async def main():
     scheduler.add_job(
         sync_rate,
         "cron",
-        hour=23,
-        minute=40,
+        hour=5,
+        minute=50,
         args=[redis_client],
         id="sync_exchange_rates",
         replace_existing=True,
@@ -59,8 +59,8 @@ async def main():
         scheduler.add_job(
             send_rate,
             "cron",
-            hour=23,
-            minute=40,
+            hour=6,
+            minute=0,
             args=[bot, config.bot.channel_id, redis_client],
             id="send_exchange_rates",
             replace_existing=True,

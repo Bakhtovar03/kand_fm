@@ -64,11 +64,12 @@ def format_bank_rates_for_client(data: dict) -> str:
 
 
         rates = bank_data.get("rates", {})
-        updated_at = bank_data.get("updated_at")
-        if updated_at and not updated:
-            lines.append(f"Курби асъор дар санаи: {updated_at}")
-            updated = True
-            lines.append("")
+
+        # updated_at = bank_data.get("updated_at")
+        # if updated_at and not updated:
+        #     lines.append(f"Курби асъор дар санаи: {updated_at}")
+        #     updated = True
+        #     lines.append("")
 
         # Название банка выделяем жирным через HTML-тег <b>.
         # Шаблон: ищет открывающую кавычку, затем любые символы внутри, затем закрывающую
