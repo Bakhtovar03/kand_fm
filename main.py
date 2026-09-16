@@ -10,6 +10,7 @@ from aiogram.fsm.storage.redis import RedisStorage
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from config import load_config
+from handlers.admin_janoza import admin_router
 from handlers.user import user_router
 from sync_script import send_rate, sync_rate
 
@@ -30,6 +31,7 @@ async def main():
 
     dp = Dispatcher(storage=storage)
     dp.include_router(user_router)
+    dp.include_router(admin_router)
 
 
     bot = Bot(

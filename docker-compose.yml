@@ -1,7 +1,14 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "1"
+
 services:
   bot:
     build: .
     restart: unless-stopped
+    logging: *default-logging
     env_file:
       - .env
     environment:
@@ -14,6 +21,8 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    command: redis-server --appendonly yes
+    logging: *default-logging
     volumes:
       - redis_data:/data
     healthcheck:
