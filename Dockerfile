@@ -19,7 +19,7 @@ RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin appuser \
 COPY requirements.txt ./
 RUN pip install --no-compile --retries 10 --timeout 120 --index-url "$PIP_INDEX_URL" -r requirements.txt
 
-COPY --chown=appuser:appuser config.py main.py sync_script.py utils.py ./
+COPY --chown=appuser:appuser admin_utils.py config.py main.py sync_script.py utils.py ./
 COPY --chown=appuser:appuser handlers ./handlers
 COPY --chown=appuser:appuser keyboards ./keyboards
 COPY --chown=appuser:appuser lexicon ./lexicon

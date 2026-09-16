@@ -45,6 +45,8 @@ async def start(message: Message):
 
 @user_router.callback_query(F.data == BUTTON_LEXICON["janoza"])
 async def subscribe_to_janoza(callback_query: CallbackQuery):
+    await callback_query.answer()
+
     # ID пользователя сохраняется в Redis-множестве, откуда админская рассылка берет получателей.
     redis_client = getattr(callback_query.bot, "redis_client")
     is_subscriber = await redis_client.sismember(
@@ -69,6 +71,8 @@ async def subscribe_to_janoza(callback_query: CallbackQuery):
 
 @user_router.callback_query(F.data == BUTTON_LEXICON["Cancel_subscription"])
 async def cancel_janoza_subscription(callback_query: CallbackQuery):
+    await callback_query.answer()
+
     # Удаление из множества отключает пользователя от будущих фоновых рассылок.
     redis_client = getattr(callback_query.bot, "redis_client")
     removed_count = await redis_client.srem(
