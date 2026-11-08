@@ -1,7 +1,5 @@
-import logging
 import re
-
-from aiogram import Bot
+from html import escape
 
 SAFE_TELEGRAM_MESSAGE_LIMIT = 3900
 
@@ -29,23 +27,9 @@ def should_show_bank(bank_name: str) -> bool:
     return any(alias in normalized_name for alias in TARGET_BANK_ALIASES)
 
 
-def format_rate_value(value: float | int | str | None) -> str:
-    # Если в таблице НБТ пустое значение, показываем клиенту прочерк.
-    if value is None:
-        return "-"
-
-    # Строки возвращаем как есть, чтобы не сломать уже готовый текст.
-    if isinstance(value, str):
-        return value
-
-    # Формат :g убирает лишние нули после точки, например 9.2200 -> 9.22.
-    return f"{value:g}"
-
-
 def format_bank_rates_for_client(data: dict) -> str:
     # Собираем список строк, потом объединяем их в один HTML-текст для Telegram.
     lines = []
-    updated = False
     for bank_name, bank_data in data.items():
         if not should_show_bank(bank_name):
             continue
@@ -55,6 +39,7 @@ def format_bank_rates_for_client(data: dict) -> str:
 
         # Флаг России (RU): региональные символы \U0001F1F7
         flag_ru = "\U0001F1F7\U0001F1FA"
+        flag_eu = "\U0001F1EA\U0001F1FA"
 
         # Наличные деньги (Пачка долларов с крылышками): код \U0001F4B8
         emoji_cash_wings = "\U0001F4B8"
@@ -65,16 +50,11 @@ def format_bank_rates_for_client(data: dict) -> str:
 
         rates = bank_data.get("rates", {})
 
-        # updated_at = bank_data.get("updated_at")
-        # if updated_at and not updated:
-        #     lines.append(f"Курби асъор дар санаи: {updated_at}")
-        #     updated = True
-        #     lines.append("")
-
         # Название банка выделяем жирным через HTML-тег <b>.
         # Шаблон: ищет открывающую кавычку, затем любые символы внутри, затем закрывающую
         match = re.search(r'"([^"]*)"', bank_name)
-        lines.append(f"<b>{match.group(1)}</b>")
+        display_name = match.group(1) if match else bank_name
+        lines.append(f"<b>{escape(display_name[:200])}</b>")
 
 
 
@@ -89,21 +69,20 @@ def format_bank_rates_for_client(data: dict) -> str:
             cash = currency_data.get("cash", {})
             transfer = currency_data.get("transfer", {})
 
-            cash_buy = float(format_rate_value(cash.get("buy")))
-            cash_sell = float(format_rate_value(cash.get("sell")))
-            transfer_buy = float(format_rate_value(transfer.get("buy")))
-            transfer_sell = float(format_rate_value(transfer.get("sell")))
+            def scaled(value, factor):
+                return f"{value * factor:.2f}" if value is not None else "-"
 
             if currency == "RUB":
                 lines.append(f"Рубли Русия {currency}{flag_ru}:")
                 # Добавляем:.2f внутрь фигурных скобок после математического действия
-                lines.append(f"  Нақдӣ:{emoji_cash_wings} харид {cash_buy * 1000:.2f}, фурӯш {cash_sell * 1000:.2f}")
-                lines.append(f"  Интиқол:{emoji_card} харид {transfer_buy * 1000:.2f}, фурӯш {transfer_sell * 1000:.2f}")
+                lines.append(f"  Нақдӣ:{emoji_cash_wings} харид {scaled(cash.get('buy'), 1000)}, фурӯш {scaled(cash.get('sell'), 1000)}")
+                lines.append(f"  Интиқол:{emoji_card} харид {scaled(transfer.get('buy'), 1000)}, фурӯш {scaled(transfer.get('sell'), 1000)}")
 
-            elif currency == "USD":
-                lines.append(f"Доллари Амрико {currency}{flag_us}:")
-                lines.append(f"  Нақдӣ:{emoji_cash_wings} харид {cash_buy * 100:.2f}, фурӯш {cash_sell * 100:.2f}")
-                lines.append(f"  Интиқол:{emoji_card} харид {transfer_buy * 100:.2f}, фурӯш {transfer_sell * 100:.2f}")
+            elif currency in ("USD", "EUR"):
+                label = f"Доллари Амрико USD{flag_us}" if currency == "USD" else f"Евро EUR{flag_eu}"
+                lines.append(f"{label}:")
+                lines.append(f"  Нақдӣ:{emoji_cash_wings} харид {scaled(cash.get('buy'), 100)}, фурӯш {scaled(cash.get('sell'), 100)}")
+                lines.append(f"  Интиқол:{emoji_card} харид {scaled(transfer.get('buy'), 100)}, фурӯш {scaled(transfer.get('sell'), 100)}")
 
         # Пустая строка визуально отделяет банки друг от друга.
         lines.append("")
@@ -148,17 +127,3 @@ def split_text_for_telegram(text: str, limit: int = SAFE_TELEGRAM_MESSAGE_LIMIT)
         parts.append("\n".join(current_lines))
 
     return parts
-
-
-async def send_scheduled_message(bot: Bot, chat_id: int, text: str):
-    # Отправляем длинный текст несколькими Telegram-сообщениями.
-    for message_part in split_text_for_telegram(text):
-        try:
-            await bot.send_message(
-                chat_id=chat_id,
-                text=message_part,
-                parse_mode="HTML",
-            )
-            logging.info("Scheduled message was sent")
-        except Exception as exc:
-            logging.error(f"Scheduled message sending failed: {exc}")

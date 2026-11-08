@@ -3,8 +3,8 @@ from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
 from aiogram.types import CallbackQuery, Message
 
-from admin_utils import ADMIN_PANEL_CALLBACK, JANOZA_SUBSCRIBERS_KEY, is_janoza_admin
-from keyboards.inlinekeyboards import create_inline_keyboards
+from admin_utils import JANOZA_SUBSCRIBERS_KEY, is_janoza_admin
+from keyboards.inlinekeyboards import exchange_rate_keyboard, subscription_keyboard, user_menu_keyboard
 from lexicon.lexicon import BUTTON_LEXICON, COMMAND_LEXICON
 from utils import split_text_for_telegram
 
@@ -22,28 +22,14 @@ async def start(message: Message):
     )
     is_admin = await is_janoza_admin(redis_client, message.from_user.id)
 
-    # На старте показываем актуальное действие: подписаться или отменить подписку.
-    janoza_button = (
-        BUTTON_LEXICON["Cancel_subscription"]
-        if is_subscriber
-        else BUTTON_LEXICON["janoza"]
-    )
-
-    buttons = [
-        BUTTON_LEXICON["exchange_rate"],
-        janoza_button,
-    ]
-    if is_admin:
-        buttons.append(ADMIN_PANEL_CALLBACK)
-
     await message.answer(
-        text=COMMAND_LEXICON["russian"]["/start"],
+        text=COMMAND_LEXICON["/start"],
         parse_mode=ParseMode.HTML,
-        reply_markup=create_inline_keyboards(*buttons),
+        reply_markup=user_menu_keyboard(is_subscriber, is_admin),
     )
 
 
-@user_router.callback_query(F.data == BUTTON_LEXICON["janoza"])
+@user_router.callback_query(F.data.in_({"janoza", BUTTON_LEXICON["janoza"], "Обуна шудан ба чанозахои Конибодом"}))
 async def subscribe_to_janoza(callback_query: CallbackQuery):
     await callback_query.answer()
 
@@ -65,11 +51,11 @@ async def subscribe_to_janoza(callback_query: CallbackQuery):
     # После подписки показываем кнопку отмены, чтобы пользователь мог сам выйти из рассылки.
     await callback_query.message.answer(
         text="шумо обунаро бо бомуваффақият пайваст намудет✅",
-        reply_markup=create_inline_keyboards(BUTTON_LEXICON["Cancel_subscription"]),
+        reply_markup=subscription_keyboard(True),
     )
 
 
-@user_router.callback_query(F.data == BUTTON_LEXICON["Cancel_subscription"])
+@user_router.callback_query(F.data.in_({"Cancel_subscription", BUTTON_LEXICON["Cancel_subscription"], "қатъ кардани обуна ба ҷаноза"}))
 async def cancel_janoza_subscription(callback_query: CallbackQuery):
     await callback_query.answer()
 
@@ -79,9 +65,6 @@ async def cancel_janoza_subscription(callback_query: CallbackQuery):
         JANOZA_SUBSCRIBERS_KEY,
         callback_query.from_user.id,
     )
-
-
-
     if not callback_query.message:
         return
 
@@ -91,11 +74,11 @@ async def cancel_janoza_subscription(callback_query: CallbackQuery):
             if removed_count
             else "шумо ба обуна пайваст нестед."
         ),
-        reply_markup=create_inline_keyboards(BUTTON_LEXICON["janoza"]),
+        reply_markup=subscription_keyboard(False),
     )
 
 
-@user_router.callback_query(F.data == BUTTON_LEXICON["exchange_rate"])
+@user_router.callback_query(F.data.in_({"exchange_rate", BUTTON_LEXICON["exchange_rate"]}))
 async def exchange_rate(callback_query: CallbackQuery):
     # Достаем из Redis заранее подготовленный текст с курсами.
     redis_client = getattr(callback_query.bot, "redis_client")
@@ -108,8 +91,8 @@ async def exchange_rate(callback_query: CallbackQuery):
 
     if not rate:
         await callback_query.message.answer(
-            text="Курсы валют пока не загружены.",
-            reply_markup=create_inline_keyboards(BUTTON_LEXICON["exchange_rate"])
+            text="Қурбҳои асъор ҳанӯз боргузорӣ нашудаанд.",
+            reply_markup=exchange_rate_keyboard()
         )
         return
 
@@ -118,5 +101,5 @@ async def exchange_rate(callback_query: CallbackQuery):
         await callback_query.message.answer(
             text=message_part,
             parse_mode=ParseMode.HTML,
-            reply_markup=create_inline_keyboards(BUTTON_LEXICON["exchange_rate"])
+            reply_markup=exchange_rate_keyboard()
         )

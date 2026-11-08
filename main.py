@@ -41,28 +41,29 @@ async def main():
 
     # Redis-клиент в bot, чтобы handlers могли подключится к redis.
     setattr(bot, "redis_client", redis_client)
+    setattr(bot, "channel_id", config.bot.channel_id)
 
     # APScheduler запускает фоновые задачи в том же asyncio loop, что и aiogram.
     scheduler = AsyncIOScheduler(timezone="Asia/Dushanbe")
 
-    # В 07:40 обновляем курсы и сохраняем готовый текст в Redis.
+    # Обновляем курсы и сохраняем готовый текст в Redis.
     scheduler.add_job(
         sync_rate,
         "cron",
-        hour=21,
-        minute=16,
+        hour=16,
+        minute=20,
         args=[redis_client],
         id="sync_exchange_rates",
         replace_existing=True,
     )
 
-    # В 08:00 отправляем сохраненный текст в канал, если CHANNEL_ID задан в .env.
+    # Отправляем сохраненный текст в канал, если CHANNEL_ID задан в .env.
     if config.bot.channel_id is not None:
         scheduler.add_job(
             send_rate,
             "cron",
-            hour=21,
-            minute=17,
+            hour=16,
+            minute=21,
             args=[bot, config.bot.channel_id, redis_client],
             id="send_exchange_rates",
             replace_existing=True,

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import json
 import re
@@ -56,7 +57,6 @@ def fetch_nbt_currency_rows(client: httpx.Client, currency: str) -> list[dict]:
         "cash_sell": header.index("Cash Sell"),
         "transfer_buy": header.index("Non-Cash Buy"),
         "transfer_sell": header.index("Non-Cash Sell"),
-        "date": header.index("Date"),
     }
 
     parsed_rows = []
@@ -77,7 +77,6 @@ def fetch_nbt_currency_rows(client: httpx.Client, currency: str) -> list[dict]:
                     "buy": clean_float(cells[indexes["transfer_buy"]]),
                     "sell": clean_float(cells[indexes["transfer_sell"]]),
                 },
-                "updated_at": cells[indexes["date"]],
             }
         )
 
@@ -106,14 +105,13 @@ def collect_bank_rates() -> dict:
                     "cash": row["cash"],
                     "transfer": row["transfer"],
                 }
-                bank["updated_at"] = row["updated_at"]
 
     return result
 
 
 async def sync_rate(redis_client) -> None:
     # Задача расписания: собрать курсы, отформатировать и сохранить в Redis.
-    rates_data = collect_bank_rates()
+    rates_data = await asyncio.to_thread(collect_bank_rates)
     rates_text = format_bank_rates_for_client(rates_data)
     await redis_client.hset("exchange_rate", "rate", rates_text)
     logging.info("Exchange rates were synced to Redis")
