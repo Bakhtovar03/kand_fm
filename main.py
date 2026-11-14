@@ -10,6 +10,7 @@ from aiogram.fsm.storage.redis import RedisStorage
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from config import load_config
+from admin_utils import delete_expired_janoza_posts
 from handlers.admin_janoza import admin_router
 from handlers.user import user_router
 from sync_script import send_rate, sync_rate
@@ -46,12 +47,23 @@ async def main():
     # APScheduler запускает фоновые задачи в том же asyncio loop, что и aiogram.
     scheduler = AsyncIOScheduler(timezone="Asia/Dushanbe")
 
+    # Redis сохраняет очередь после перезапуска; просроченные посты удаляются при запуске.
+    await delete_expired_janoza_posts(bot, redis_client)
+    scheduler.add_job(
+        delete_expired_janoza_posts,
+        "interval",
+        minutes=1,
+        args=[bot, redis_client],
+        id="delete_expired_janoza_posts",
+        replace_existing=True,
+    )
+
     # Обновляем курсы и сохраняем готовый текст в Redis.
     scheduler.add_job(
         sync_rate,
         "cron",
-        hour=16,
-        minute=20,
+        hour=5,
+        minute=58,
         args=[redis_client],
         id="sync_exchange_rates",
         replace_existing=True,
@@ -62,8 +74,8 @@ async def main():
         scheduler.add_job(
             send_rate,
             "cron",
-            hour=16,
-            minute=21,
+            hour=6,
+            minute=0,
             args=[bot, config.bot.channel_id, redis_client],
             id="send_exchange_rates",
             replace_existing=True,

@@ -1,8 +1,9 @@
 import asyncio
 import logging
+import time
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramAPIError, TelegramForbiddenError, TelegramRetryAfter
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
 from aiogram.filters import BaseFilter
 from aiogram.types import CallbackQuery, Message
 
@@ -17,6 +18,8 @@ JANOZA_SUBSCRIBERS_KEY = "janoza_subscribers"
 
 # Пауза между отправками держит рассылку ниже общего лимита Telegram.
 JANOZA_MAILING_DELAY_SECONDS = 0.1
+JANOZA_CHANNEL_DELETIONS_KEY = "janoza:channel_deletions"
+JANOZA_POST_LIFETIME_SECONDS = 24 * 60 * 60
 
 # Значения callback_data для административных кнопок.
 ADMIN_PANEL_CALLBACK = "admin_panel"
@@ -80,27 +83,44 @@ def _normalize_subscriber_ids(subscribers: set | list | tuple) -> list[int]:
     return subscriber_ids
 
 
-async def _send_janoza_invitation(bot: Bot, chat_id: int, data: dict) -> bool:
+async def _send_janoza_invitation(bot: Bot, chat_id: int, data: dict) -> Message | None:
     """Отправляет приглашение в чат или канал с учетом Telegram flood control."""
     while True:
         try:
             if data.get("photo_file_id"):
-                await bot.send_photo(
+                sent_message = await bot.send_photo(
                     chat_id=chat_id, photo=data["photo_file_id"],
                     caption=data["text"], parse_mode="HTML",
                 )
             else:
-                await bot.send_message(chat_id=chat_id, text=data["text"], parse_mode="HTML")
-            return True
+                sent_message = await bot.send_message(chat_id=chat_id, text=data["text"], parse_mode="HTML")
+            return sent_message
         except TelegramRetryAfter as exc:
             # Telegram сам сообщает, сколько ждать перед повтором отправки.
             await asyncio.sleep(exc.retry_after + 1)
         except TelegramForbiddenError:
             logging.warning(f"Janoza invitation was not sent to {chat_id}: access forbidden")
-            return False
+            return None
         except TelegramAPIError as exc:
             logging.error(f"Janoza invitation was not sent to {chat_id}: {exc}")
-            return False
+            return None
+
+
+async def delete_expired_janoza_posts(bot: Bot, redis_client) -> None:
+    """Удаляет публикации, срок хранения которых истек, и повторяет ошибки позже."""
+    posts = await redis_client.zrangebyscore(JANOZA_CHANNEL_DELETIONS_KEY, "-inf", time.time())
+    for post in posts:
+        try:
+            chat_id, message_id = map(int, post.split(":"))
+            await bot.delete_message(chat_id=chat_id, message_id=message_id)
+        except TelegramBadRequest as exc:
+            if "message to delete not found" not in str(exc).lower():
+                logging.warning("Could not delete janoza post %s: %s", post, exc)
+                continue
+        except Exception as exc:
+            logging.warning("Could not delete janoza post %s: %s", post, exc)
+            continue
+        await redis_client.zrem(JANOZA_CHANNEL_DELETIONS_KEY, post)
 
 
 async def send_janoza_form_to_subscribers(
@@ -115,11 +135,19 @@ async def send_janoza_form_to_subscribers(
         channel_status = "Канал: не настроен (CHANNEL_ID не задан)."
         if channel_id is not None:
             channel_sent = await _send_janoza_invitation(bot, channel_id, data)
-            channel_status = (
-                "Канал: публикация отправлена."
-                if channel_sent
-                else "Канал: ошибка публикации. Проверьте права бота и CHANNEL_ID."
-            )
+            if channel_sent:
+                try:
+                    await redis_client.zadd(
+                        JANOZA_CHANNEL_DELETIONS_KEY,
+                        {f"{channel_id}:{channel_sent.message_id}": channel_sent.date.timestamp() + JANOZA_POST_LIFETIME_SECONDS},
+                    )
+                except Exception:
+                    logging.exception("Failed to schedule deletion of janoza post %s", channel_sent.message_id)
+                    channel_status = "Канал: публикация отправлена, но не удалось запланировать удаление."
+                else:
+                    channel_status = "Канал: публикация отправлена, удаление запланировано через 24 часа."
+            else:
+                channel_status = "Канал: ошибка публикации. Проверьте права бота и CHANNEL_ID."
             await asyncio.sleep(JANOZA_MAILING_DELAY_SECONDS)
         logging.info(channel_status)
 
